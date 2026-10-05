@@ -1,279 +1,218 @@
---=============================================================
---  Roblox Aimbot + ESP  |  横向 UI
---  左侧 = 功能大类，右侧 = 该类下的可调节项
---=============================================================
 
-local Players           = game:GetService("Players")
-local RunService        = game:GetService("RunService")
-local UserInputService  = game:GetService("UserInputService")
-local Workspace         = game:GetService("Workspace")
 
-local LocalPlayer = Players.LocalPlayer
-local Camera      = Workspace.CurrentCamera
+本地保存速度 = 50
 
--- 兼容不同版本的射线过滤枚举
-local RAY_EXCLUDE
-pcall(function() RAY_EXCLUDE = Enum.RaycastFilterType.Exclude end)
-if not RAY_EXCLUDE then RAY_EXCLUDE = Enum.RaycastFilterType.Blacklist end
+本地函数 GUI（）
+本地玩家 = 游戏：GetService（“玩家”）
+local RunService = game：GetService（“RunService”）
+local UserInputService = game：GetService（“UserInputService”）
+本地玩家 = Players.LocalPlayer
+局部特征 = 玩家。角色还是玩家。角色新增：等待（）
+本地类人生物 = 角色：WaitForChild（“类人生物”）
+本地HRP = character：WaitForChild（“HumanoidRootPart”）
+本地摄像头=工作空间。CurrentCamera
 
---=============================================================
---  配置
---=============================================================
-local Config = {
-    Aimbot = {
-        Enabled    = false,
-        Smoothness = 0.50,                       -- 0 = 瞬间吸附, 1 = 最慢
-        Range      = 500,                        -- 世界单位
-        FOV        = 150,                        -- 屏幕像素半径
-        FOVColor   = Color3.fromRGB(255,255,255),-- 默认白色
-        TeamCheck  = true,
-        WallCheck  = true,
-    },
-    ESP = {
-        Enabled   = false,
-        TeamCheck = true,
-    },
-}
+本地BaseSpeed = savedSpeed
+本地飞行速度 = 基速
+本地飞行 = 假
+局部前置保持 = 0
+局部输入Flags = { forward = false，back = false，left = false，right = false，up = false，down = false }
 
---=============================================================
---  工具函数
---=============================================================
-local function addCorner(inst, r)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, r or 6)
-    c.Parent = inst
-    return c
-end
+local bodyVelocity = Instance.new（“BodyVelocity”）
+bodyVelocity.MaxForce = Vector3.new（1e5， 1e5， 1e5）
 
-local function addStroke(inst, color, thickness, transparency)
-    local s = Instance.new("UIStroke")
-    s.Color        = color or Color3.fromRGB(50,50,58)
-    s.Thickness    = thickness or 1
-    s.Transparency = transparency or 0
-    s.Parent       = inst
-    return s
-end
+local bodyGyro = Instance.new（“BodyGyro”）
+bodyGyro.MaxTorque = Vector3.new（1e5， 1e5， 1e5）
 
-local function safeParent(gui)
-    local ok = pcall(function() gui.Parent = game:GetService("CoreGui") end)
-    if not ok or not gui.Parent then
-        gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    end
-end
-
---=============================================================
---  FOV 圆圈（独立 GUI，保证不被主窗口拖动影响）
---=============================================================
-local fovGui = Instance.new("ScreenGui")
-fovGui.Name         = "FovCircleGui"
-fovGui.ResetOnSpawn = false
-fovGui.IgnoreGuiInset = true
-fovGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-safeParent(fovGui)
-
-local fovCircle = Instance.new("Frame")
-fovCircle.Name                = "FovCircle"
-fovCircle.AnchorPoint         = Vector2.new(0.5, 0.5)   -- 关键：锚点居中
-fovCircle.Position            = UDim2.new(0.5, 0, 0.5, 0) -- 关键：绝对屏幕中心
-fovCircle.Size                = UDim2.new(0, Config.Aimbot.FOV * 2, 0, Config.Aimbot.FOV * 2)
-fovCircle.BackgroundTransparency = 1                     -- 空心
-fovCircle.BorderSizePixel     = 0
-fovCircle.Active              = false
-fovCircle.Parent              = fovGui
-addCorner(fovCircle, 9999) -- 圆角拉满 = 正圆
-
-local fovStroke = Instance.new("UIStroke")
-fovStroke.Color        = Config.Aimbot.FOVColor
-fovStroke.Thickness    = 1.5
-fovStroke.Transparency = 0.15
-fovStroke.Parent       = fovCircle
-
-local function updateFovCircle()
-    fovCircle.Size    = UDim2.new(0, Config.Aimbot.FOV * 2, 0, Config.Aimbot.FOV * 2)
-    fovStroke.Color   = Config.Aimbot.FOVColor
-    fovCircle.Visible = Config.Aimbot.Enabled
-end
-updateFovCircle()
-
---=============================================================
---  主窗口
---=============================================================
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name         = "CheatUI"
+本地 screenGui = Instance.new（“ScreenGui”）
+screenGui.Name = “FlyScreenGui”
 screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-safeParent(screenGui)
+screenGui.Parent = player：WaitForChild（“PlayerGui”）
 
-local main = Instance.new("Frame")
-main.Name             = "Main"
-main.Size             = UDim2.new(0, 520, 0, 340)
-main.Position         = UDim2.new(0.5, -260, 0.5, -170)
-main.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-main.BorderSizePixel  = 0
-main.Active           = true
-main.Parent           = screenGui
-addCorner(main, 10)
-addStroke(main, Color3.fromRGB(45, 45, 54), 1, 0.2)
+local toggleButton = Instance.new（“TextButton”）
+toggleButton.Name = “切换飞按钮”
+toggleButton.Text = “飞离”
+toggleButton.Size = UDim2.new（0， 100， 0， 50）
+toggleButton.Position = UDim2.new（1， -220， 0， 10）
+toggleButton.BackgroundColor3 = Color3.fromRGB（40， 40， 40）
+toggleButton.TextColor3 = Color3.fromRGB（255， 255， 255）
+toggleButton.Font = Enum.Font.GothamBold（粗体）
+toggleButton.TextScaled = true
+toggleButton.BackgroundTransparency = 0.2
+toggleButton.Parent = screenGui
 
--- 标题栏
-local titleBar = Instance.new("Frame")
-titleBar.Size                = UDim2.new(1, 0, 0, 38)
-titleBar.BackgroundTransparency = 1
-titleBar.Parent              = titleBar.Parent or main
+本地速度盒 = 实例.new（“TextBox”）
+speedBox.Name = “SpeedBox”
+speedBox.Text = tostring（baseSpeed）
+speedBox.Size = UDim2.new（0， 100， 0， 50）
+speedBox.Position = UDim2.new（1， -110， 0， 10）
+speedBox.BackgroundColor3 = Color3.fromRGB（40， 40， 40）
+speedBox.TextColor3 = Color3.fromRGB（255， 255， 255）
+speedBox.Font = Enum.Font.GothamBold。
+speedBox.TextScaled = true
+speedBox.BackgroundTransparency = 0.2
+speedBox.Parent = screenGui
 
-local titleText = Instance.new("TextLabel")
-titleText.Size             = UDim2.new(1, -90, 1, 0)
-titleText.Position         = UDim2.new(0, 16, 0, 0)
-titleText.BackgroundTransparency = 1
-titleText.Text             = "AIMBOT  •  ESP"
-titleText.TextColor3       = Color3.fromRGB(235, 235, 242)
-titleText.Font             = Enum.Font.GothamBold
-titleText.TextSize         = 13
-titleText.TextXAlignment   = Enum.TextXAlignment.Left
-titleText.Parent           = titleBar
+本地函数 newAnim（id）
+本地动画 = Instance.new（“动画”）
+anim。AnimationId = “rbxassetid://” ..身份证
+回归动画
+结束
 
-local function makeTitleBtn(text, offsetX, onClick)
-    local b = Instance.new("TextButton")
-    b.Size             = UDim2.new(0, 24, 0, 24)
-    b.Position         = UDim2.new(1, offsetX, 0, 7)
-    b.BackgroundColor3 = Color3.fromRGB(32, 32, 38)
-    b.Text             = text
-    b.TextColor3       = Color3.fromRGB(200, 200, 210)
-    b.Font             = Enum.Font.GothamBold
-    b.TextSize         = 14
-    b.AutoButtonColor  = false
-    b.Parent           = titleBar
-    addCorner(b, 6)
-    b.MouseButton1Click:Connect(onClick)
-    return b
-end
+局部动画 = {
+forward = newAnim（90872539），
+up = newAnim（90872539），
+right1 = newAnim（136801964），
+right2 = newAnim（142495255），
+left1 = newAnim（136801964），
+left2 = newAnim（142495255），
+flyLow1 = newAnim（97169019），
+flyLow2 = newAnim（282574440），
+flyFast = newAnim（282574440），
+back1 = newAnim（136801964），
+back2 = newAnim（106772613），
+back3 = newAnim（42070810），
+back4 = newAnim（214744412），
+down = newAnim（233322916），
+idle1 = newAnim（97171309）
+    }
 
-local minBtn = makeTitleBtn("—", -66, function()
-    main.Visible = false
-    restoreBtn.Visible = true
-end)
+本地轨道 = {}
+名字是 Anim in pairs（animations）
+tracks[name] = humanoid：LoadAnimation（anim）
+结束
 
-local closeBtn = makeTitleBtn("✕", -36, function()
-    screenGui:Destroy()
-    fovGui:Destroy()
-end)
+局部函数 stopAll（）
+对于_，轨道成对（tracks） do
+轨道：停止（）
+结束
+结束
 
--- 最小化后的还原按钮
-local restoreBtn = Instance.new("TextButton")
-restoreBtn.Size             = UDim2.new(0, 130, 0, 32)
-restoreBtn.Position         = UDim2.new(0, 20, 0, 20)
-restoreBtn.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-restoreBtn.Text             = "AIMBOT  •  ESP"
-restoreBtn.TextColor3       = Color3.fromRGB(235, 235, 242)
-restoreBtn.Font             = Enum.Font.GothamBold
-restoreBtn.TextSize         = 12
-restoreBtn.AutoButtonColor  = false
-restoreBtn.Visible          = false
-restoreBtn.Parent           = screenGui
-addCorner(restoreBtn, 8)
-addStroke(restoreBtn, Color3.fromRGB(45, 45, 54), 1, 0.2)
+本地函数 startFlying（）
+飞行 = 真
+前进保持 = 0
+飞速 = 基速
+bodyVelocity。父节点 = HRP
+bodyGyro。父 = HRP
+类人生物。PlatformStand = 真
+结束
 
-restoreBtn.MouseButton1Click:Connect(function()
-    main.Visible = true
-    restoreBtn.Visible = false
-end)
+本地函数 stopFlying（）
+飞行 = 假
+身体速度。父 = 零
+bodyGyro.Parent = 零
+类人生物。PlatformStand = false
+stopAll（）
+结束
 
--- 窗口拖动
-do
-    local dragging, dragStart, startPos
-    titleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            dragging  = true
-            dragStart = input.Position
-            startPos  = main.Position
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if not dragging then return end
-        if input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch then
-            local d = input.Position - dragStart
-            main.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + d.X,
-                startPos.Y.Scale, startPos.Y.Offset + d.Y
-            )
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-end
+toggleButton.MouseButton1Click：Connect（function（）
+如果在飞行，则
+停止飞行（）
+toggleButton.Text = “飞离”
+否则
+startFlying（）
+toggleButton.Text = “Fly ON”
+结束
+结束）
 
--- 主体：左导航 + 右内容
-local body = Instance.new("Frame")
-body.Size                = UDim2.new(1, -20, 1, -54)
-body.Position            = UDim2.new(0, 10, 0, 46)
-body.BackgroundTransparency = 1
-body.Parent              = main
+speedBox.FocusLost：Connect（function（）
+local num = tonumber（speedBox.Text）
+如果 NUM 和 NUM > 0，则
+baseSpeed = 数值
+savedSpeed = num
+如果正在飞行，则飞速 = 基速 结束
+否则
+speedBox.Text = tostring（baseSpeed）
+结束
+结束）
 
-local sidebar = Instance.new("Frame")
-sidebar.Size             = UDim2.new(0, 128, 1, 0)
-sidebar.BackgroundColor3 = Color3.fromRGB(23, 23, 28)
-sidebar.BorderSizePixel  = 0
-sidebar.Parent           = body
-addCorner(sidebar, 8)
+UserInputService.InputBegan：Connect（function（input， gameProcessed）
+如果gameProcessed，则返回结束
+如果输入。KeyCode == Enum.KeyCode.W 然后 inputFlags.forward = true end
+如果输入。KeyCode == Enum.KeyCode.S 然后 inputFlags.back = true end
+如果输入。KeyCode == Enum.KeyCode.A 然后 inputFlags.left = true end
+如果输入。KeyCode == Enum.KeyCode.D 然后 inputFlags.right = true end
+如果输入。KeyCode == Enum.KeyCode.E then inputFlags.up = true end
+如果输入。KeyCode == Enum.KeyCode.Q 然后 inputFlags.down = true end
+结束）
 
-local content = Instance.new("Frame")
-content.Size                = UDim2.new(1, -140, 1, 0)
-content.Position            = UDim2.new(0, 140, 0, 0)
-content.BackgroundTransparency = 1
-content.Parent              = body
+UserInputService.InputEnded：Connect（function（input）
+如果输入。KeyCode == Enum.KeyCode.W 然后 inputFlags.forward = false end
+如果输入。KeyCode == Enum.KeyCode.S 然后 inputFlags.back = false end
+如果输入。KeyCode == Enum.KeyCode.A 然后 inputFlags.left = false end
+如果输入。KeyCode == Enum.KeyCode.D 然后 inputFlags.right = false end
+如果输入。KeyCode == Enum.KeyCode.E 然后 inputFlags.up = false end
+如果输入。KeyCode == Enum.KeyCode.Q 然后 inputFlags.down = false end
+结束）
 
---=============================================================
---  控件工厂：滑块 / 开关
---=============================================================
-local function createSlider(parent, label, min, max, default, step, callback)
-    local row = Instance.new("Frame")
-    row.Size                = UDim2.new(1, 0, 0, 46)
-    row.BackgroundTransparency = 1
-    row.Parent              = parent
+RunService.RenderStepped：Connect（function（dt）
+如果不能飞行，就返回 结束
 
-    local nameLabel = Instance.new("TextLabel")
-    nameLabel.Size                = UDim2.new(0.65, 0, 0, 16)
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.Text                = label
-    nameLabel.TextColor3          = Color3.fromRGB(200, 200, 212)
-    nameLabel.Font                = Enum.Font.GothamMedium
-    nameLabel.TextSize            = 12
-    nameLabel.TextXAlignment      = Enum.TextXAlignment.Left
-    nameLabel.Parent              = row
+如果不是 inputFlags.forward，则 forwardHold = 0，结束
 
-    local valueLabel = Instance.new("TextLabel")
-    valueLabel.Size                = UDim2.new(0.35, 0, 0, 16)
-    valueLabel.Position            = UDim2.new(0.65, 0, 0, 0)
-    valueLabel.BackgroundTransparency = 1
-    valueLabel.Text                = tostring(default)
-    valueLabel.TextColor3          = Color3.fromRGB(255, 255, 255)
-    valueLabel.Font                = Enum.Font.GothamBold
-    valueLabel.TextSize            = 12
-    valueLabel.TextXAlignment      = Enum.TextXAlignment.Right
-    valueLabel.Parent              = row
+局部dir = 向量3.0
+本地摄像头CF = 摄像头。CFrame
 
-    local track = Instance.new("Frame")
-    track.Size             = UDim2.new(1, 0, 0, 6)
-    track.Position         = UDim2.new(0, 0, 0, 28)
-    track.BackgroundColor3 = Color3.fromRGB(38, 38, 45)
-    track.BorderSizePixel  = 0
-    track.Parent           = row
-    addCorner(track, 99)
+如果 inputFlags.forward 则 dir += camCF.LookVector 结束
+if inputFlags.back then dir -= camCF.LookVector 结束
+如果 inputFlags.left 则 dir -= camCF.RightVector 结束
+如果inputFlags.right，则dir += camCF.RightVector结束
+如果 inputFlags.up 则 dir += Vector3.yAxis 结束
+如果 inputFlags.down 则 dir -= 向量3.y轴结束
 
-    local fill = Instance.new("Frame")
-    fill.Size             = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    fill.BorderSizePixel  = 0
-    fill.Parent           = track
-    addCorner(fill, 99)
+如果星级>0，则dir = dir。单位终结
 
-    local knob = Instance.new("Frame")
-    knob.Size             = UDim2.new(0, 14, 0, 14)
-  
+身体速度。速度 = dir * 飞速
+bodyGyro.CFrame = camCF
+
+—— 动画逻辑
+如果inputFlags.up，则
+如果不是tracks.up.IsPlaying，则stopAll（）;tracks.up：Play（） 结束
+elseif inputFlags.down 则
+如果不是tracks.down.IsPlaying，则stopAll（）;tracks.down：Play（） 结束
+elseif inputFlags.left 则
+如果不是tracks.left1.IsPlaying
+stopAll（）
+tracks.left1：Play（）;轨道左侧1.时间位置 = 2.0;tracks.left1：调整速度（0）
+tracks.left2：Play（）;轨道左侧2.时间位置 = 0.5;tracks.left2：调整速度（0）
+结束
+elseif inputFlags.right 则
+如果不是，轨迹。右1.正在播放，那么
+stopAll（）
+tracks.right1：Play（）;轨道右侧1.时间位置 = 1.1;tracks.right1：调整速度（0）
+tracks.right2：Play（）;轨道.右2.时间位置 = 0.5;tracks.right2：调整速度（0）
+结束
+elseif inputFlags.当年
+如果不是，则 tracks.back1.正在播放
+stopAll（）
+tracks.back1：Play（）;轨道。后退1.时间位置 = 5.3;tracks.back1：调整速度（0）
+tracks.back2：Play（）;tracks.back2：调整速度（0）
+tracks.back3：Play（）;tracks.back3.时间位置 = 0.8;tracks.back3：调整速度（0）
+tracks.back4：Play（）;tracks.back4.TimePosition = 1;tracks.back4：调整速度（0）
+结束
+elseif inputFlags.forward 则
+前进保持 += dt
+如果 forward 保持 >= 3，则
+如果不是tracks.flyFast.IsPlaying
+stopAll（）
+飞速 = 基速 * 1.3
+tracks.flyFast：Play（）;tracks.flyFast：AdjustSpeed（0.05）
+结束
+否则
+如果不是tracks.flyLow1.IsPlaying
+stopAll（）
+飞速 = 基速
+tracks.flyLow1：Play（）
+tracks.flyLow2：Play（）
+结束
+结束
+否则
+如果不是tracks.idle1.IsPlaying
+stopAll（）
+tracks.idle1：Play（）;tracks.idle1：调整速度（0）
+结束
+结束
+结束）
+结束
+
+GUI（）
