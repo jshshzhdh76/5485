@@ -1,7 +1,8 @@
--- ============ 横向 UI 框架（纯界面演示，无作弊逻辑） ============
+-- ============ 横向 UI 框架（窗口版·可最小化·纯界面，无作弊逻辑） ============
 local Players = game:GetService("Players")
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
+local UIS = game:GetService("UserInputService")
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "UI框架"
@@ -30,9 +31,7 @@ local function makeText(txt, size, color, bold)
 	t.Font = Enum.Font.GothamMedium
 	t.BackgroundTransparency = 1
 	t.Size = UDim2.fromScale(1, 1)
-	if bold then
-		t.Font = Enum.Font.GothamBold
-	end
+	if bold then t.Font = Enum.Font.GothamBold end
 	return t
 end
 
@@ -42,72 +41,162 @@ local function makeCorner(radius)
 	return c
 end
 
--- ============ 根布局：横向 ============
-local Root = Instance.new("Frame")
-Root.Size = UDim2.fromScale(1, 1)
-Root.BackgroundTransparency = 1
-Root.Parent = ScreenGui
+-- ============ 窗口（可最小化，居中，可拖拽） ============
+local DEFAULT_W = 560
+local DEFAULT_H = 400
+local BAR_H = 34
 
--- 背景
-local Bg = Instance.new("Frame")
-Bg.Size = UDim2.fromScale(1, 1)
-Bg.BackgroundColor3 = Color3.fromRGB(227, 238, 250)
-Bg.BorderSizePixel = 0
-Bg.Parent = Root
+local Window = Instance.new("Frame")
+Window.Name = "主窗口"
+Window.Size = UDim2.fromOffset(DEFAULT_W, DEFAULT_H)
+Window.Position = UDim2.fromScale(0.5, 0.5)
+Window.AnchorPoint = Vector2.new(0.5, 0.5)
+Window.BackgroundColor3 = Color3.fromRGB(227, 238, 250)
+Window.BorderSizePixel = 0
+Window.ZIndex = 2
+Window.Parent = ScreenGui
+Window:AddTag("UI框架_窗口")
+local Wc = makeCorner(12)
+Wc.Parent = Window
 
--- ============ 左侧导航 ============
+-- 标题栏
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, BAR_H)
+TitleBar.BackgroundColor3 = Colors.accentDark
+TitleBar.BorderSizePixel = 0
+TitleBar.ZIndex = 3
+TitleBar.Parent = Window
+local Tc = makeCorner(12)
+Tc.Parent = TitleBar
+
+local TitleTxt = makeText("UI 框架", 14, Color3.new(1, 1, 1), true)
+TitleTxt.TextXAlignment = Enum.TextXAlignment.Left
+TitleTxt.Position = UDim2.fromOffset(12, 0)
+TitleTxt.Size = UDim2.fromOffset(180, BAR_H)
+TitleTxt.ZIndex = 4
+TitleTxt.Parent = TitleBar
+
+-- ============ 最小化按钮（减号/加号切换） ============
+local function makeMinBtn(char)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.fromOffset(30, 30)
+	btn.Position = UDim2.new(1, -36, 0, 2)
+	btn.AnchorPoint = Vector2.new(0, 0)
+	btn.BackgroundColor3 = Colors.accent
+	btn.BorderSizePixel = 0
+	btn.Text = char
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.TextSize = 20
+	btn.Font = Enum.Font.GothamBold
+	btn.AutoButtonColor = false
+	btn.ZIndex = 5
+	btn.Parent = TitleBar
+	local bc = makeCorner(8)
+	bc.Parent = btn
+	btn:AddTag("UI框架_最小化_" .. (char == "－" and "减" or "加"))
+	return btn
+end
+
+local minusBtn = makeMinBtn("－")
+local plusBtn = makeMinBtn("＋")
+plusBtn.Visible = false   -- 初始只显示减号
+
+local minimized = false
+local function minimize()
+	if minimized then return end
+	minimized = true
+	-- 隐藏内容区
+	for _, child in ipairs(Window:GetChildren()) do
+		if child ~= TitleBar then
+			child.Visible = false
+		end
+	end
+	-- 只保留标题栏
+	Window.Size = UDim2.fromOffset(DEFAULT_W, BAR_H)
+	-- 窗口重新居中（按当前高度）
+	Window.Position = UDim2.fromScale(0.5, 0.5)
+	Window.AnchorPoint = Vector2.new(0.5, 0.5)
+	-- 按钮切换：删减号，显加号
+	minusBtn.Visible = false
+	plusBtn.Visible = true
+end
+
+local function restore()
+	if not minimized then return end
+	minimized = false
+	-- 恢复内容区
+	for _, child in ipairs(Window:GetChildren()) do
+		if child ~= TitleBar then
+			child.Visible = true
+		end
+	end
+	Window.Size = UDim2.fromOffset(DEFAULT_W, DEFAULT_H)
+	Window.Position = UDim2.fromScale(0.5, 0.5)
+	Window.AnchorPoint = Vector2.new(0.5, 0.5)
+	-- 删加号，还原减号
+	plusBtn.Visible = false
+	minusBtn.Visible = true
+end
+
+minusBtn.MouseButton1Click:Connect(minimize)
+plusBtn.MouseButton1Click:Connect(restore)
+
+-- 拖拽移动窗口（点击按钮不触发拖拽）
+local dragging = false
+TitleBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+	end
+end)
+TitleBar.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = false
+	end
+end)
+UIS.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local newX = input.Position.X - Window.AbsoluteSize.X * 0.5
+		local newY = input.Position.Y - Window.AbsoluteSize.Y * 0.5
+		Window.Position = UDim2.fromOffset(
+			math.clamp(newX, 0, 10000),
+			math.clamp(newY, 0, 10000)
+		)
+	end
+end)
+
+-- ============ 左侧导航（缩窄） ============
 local Nav = Instance.new("Frame")
-Nav.Size = UDim2.fromOffset(220, 0)
-Nav.Size = UDim2.new(0, 220, 1, 0)
+Nav.Position = UDim2.fromOffset(0, BAR_H)
+Nav.Size = UDim2.new(0, 150, 1, -BAR_H)
 Nav.BackgroundColor3 = Colors.navBg
 Nav.BorderSizePixel = 0
-Nav.Parent = Root
+Nav.Parent = Window
 Nav:AddTag("UI框架_左导航")
--- 导航标题
-local NavTitle = Instance.new("Frame")
-NavTitle.Size = UDim2.new(1, 0, 0, 64)
-NavTitle.BackgroundTransparency = 1
-NavTitle.Parent = Nav
-local TitleTxt = makeText("UI 框架", 18, Colors.accentDark, true)
-TitleTxt.TextXAlignment = Enum.TextXAlignment.Left
-TitleTxt.Position = UDim2.fromOffset(20, 22)
-TitleTxt.Size = UDim2.fromOffset(180, 30)
-TitleTxt.Parent = NavTitle
-local SubTxt = makeText("功能分类导航", 12, Colors.sub, false)
-SubTxt.TextXAlignment = Enum.TextXAlignment.Left
-SubTxt.Position = UDim2.fromOffset(20, 50)
-SubTxt.Size = UDim2.fromOffset(180, 20)
-SubTxt.Parent = NavTitle
 
--- 导航按钮容器
 local NavList = Instance.new("Frame")
-NavList.Position = UDim2.fromOffset(0, 64)
-NavList.Size = UDim2.new(1, 0, 1, -64)
+NavList.Size = UDim2.new(1, 0, 1, 0)
 NavList.BackgroundTransparency = 1
 NavList.Parent = Nav
 
-local pages = {}      -- 所有页面实例
-local pageBtns = {}   -- 导航按钮
+local pages = {}
+local pageBtns = {}
 local currentPage = nil
 
--- 导航按钮工厂
 local function makeNavButton(id, label)
 	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(1, -20, 0, 46)
-	btn.Position = UDim2.fromOffset(10, 0)
+	btn.Size = UDim2.new(1, -14, 0, 40)
+	btn.Position = UDim2.fromOffset(7, 0)
 	btn.BackgroundTransparency = 1
 	btn.Text = ""
 	btn.BorderSizePixel = 0
 	btn.AutoButtonColor = false
 	btn.Parent = NavList
 	btn:AddTag("UI框架_导航_" .. id)
-	-- 按钮文字
-	local btxt = makeText(label, 14, Colors.text)
+	local btxt = makeText(label, 13, Colors.text)
 	btxt.TextXAlignment = Enum.TextXAlignment.Left
-	btxt.Position = UDim2.fromOffset(14, 0)
-	btxt.Size = UDim2.new(1, -28, 1, 0)
+	btxt.Position = UDim2.fromOffset(10, 0)
+	btxt.Size = UDim2.new(1, -20, 1, 0)
 	btxt.Parent = btn
-	-- 高亮
 	local bg = Instance.new("Frame")
 	bg.BackgroundColor3 = Colors.accent
 	bg.BorderSizePixel = 0
@@ -116,76 +205,74 @@ local function makeNavButton(id, label)
 	local grad = Instance.new("UIGradient")
 	grad.Color = ColorSequence.new(Colors.accent, Colors.accentDark)
 	grad.Parent = bg
-	bg:AddTag("UI框架_按钮底")
-	btn:AddTag("UI框架_按钮父")
 	bg.ZIndex = 1
 	btxt.ZIndex = 2
+	bg.Visible = false
 	return { btn = btn, bg = bg, txt = btxt, id = id, active = false }
 end
 
--- 页面工厂
+-- ============ 右侧面板 ============
+local PageHolder = Instance.new("Frame")
+PageHolder.Position = UDim2.fromOffset(150, BAR_H)
+PageHolder.Size = UDim2.new(1, -150, 1, -BAR_H)
+PageHolder.BackgroundTransparency = 1
+PageHolder.BorderSizePixel = 0
+PageHolder.ClipsDescendants = true
+PageHolder.Parent = Window
+
 local function makePage()
 	local page = Instance.new("Frame")
 	page.BackgroundTransparency = 1
 	page.BorderSizePixel = 0
-	page.Size = UDim2.new(1, 0, 1, 0)
+	page.Size = UDim2.fromScale(1, 1)
 	page.Visible = false
-	page.Parent = Root
+	page.Parent = PageHolder
 	return page
 end
 
--- 在页面内创建"区段卡片"
 local function addSection(page, title, offsetY, height)
 	local sec = Instance.new("Frame")
-	sec.Position = UDim2.fromOffset(20, offsetY)
-	sec.Size = UDim2.new(1, -40, 0, height)
+	sec.Position = UDim2.fromOffset(14, offsetY)
+	sec.Size = UDim2.new(1, -28, 0, height)
 	sec.BackgroundColor3 = Colors.panelBg
 	sec.BorderSizePixel = 0
 	sec.Parent = page
 	sec:AddTag("UI框架_区段")
-	local c = makeCorner(14)
+	local c = makeCorner(10)
 	c.Parent = sec
-	local st = makeText(title, 13, Colors.accent, true)
+	local st = makeText(title, 12, Colors.accent, true)
 	st.TextXAlignment = Enum.TextXAlignment.Left
-	st.Position = UDim2.fromOffset(16, 10)
-	st.Size = UDim2.fromOffset(200, 24)
+	st.Position = UDim2.fromOffset(12, 8)
+	st.Size = UDim2.fromOffset(160, 20)
 	st.Parent = sec
 	return sec
 end
 
--- ========== 控件工厂 ==========
--- 滑条（可拖动调节大小/数值）
+-- 滑条
 local function addSlider(parent, offsetY, label, minV, maxV, defV, suffix, onChanged)
 	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, -32, 0, 34)
-	row.Position = UDim2.fromOffset(16, offsetY)
+	row.Size = UDim2.new(1, -24, 0, 30)
+	row.Position = UDim2.fromOffset(12, offsetY)
 	row.BackgroundTransparency = 1
 	row.Parent = parent
 	row:AddTag("UI框架_滑条行")
-
-	local lbl = makeText(label, 12, Colors.text)
+	local lbl = makeText(label, 11, Colors.text)
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.Size = UDim2.fromOffset(150, 34)
+	lbl.Size = UDim2.fromOffset(88, 30)
 	lbl.Parent = row
-
-	local val = makeText(tostring(defV) .. suffix, 12, Colors.accent, true)
+	local val = makeText(tostring(defV) .. suffix, 11, Colors.accent, true)
 	val.TextXAlignment = Enum.TextXAlignment.Right
-	val.Size = UDim2.fromOffset(60, 34)
-	val.Position = UDim2.new(1, -60, 0, 0)
+	val.Size = UDim2.fromOffset(44, 30)
+	val.Position = UDim2.new(1, -44, 0, 0)
 	val.Parent = row
-	row:AddTag("UI框架_滑条值")
-
-	-- 轨道
 	local track = Instance.new("Frame")
-	track.Position = UDim2.fromOffset(150, 14)
-	track.Size = UDim2.new(0, 180, 0, 6)
+	track.Position = UDim2.fromOffset(92, 12)
+	track.Size = UDim2.new(0, 160, 0, 5)
 	track.BackgroundColor3 = Colors.line
 	track.BorderSizePixel = 0
 	track.Parent = row
 	local tc = makeCorner(3)
 	tc.Parent = track
-
-	-- 填充
 	local fill = Instance.new("Frame")
 	fill.BackgroundColor3 = Colors.accent
 	fill.BorderSizePixel = 0
@@ -193,20 +280,15 @@ local function addSlider(parent, offsetY, label, minV, maxV, defV, suffix, onCha
 	fill.Parent = track
 	local fc = makeCorner(3)
 	fc.Parent = fill
-	track:AddTag("UI框架_滑条轨道")
-
-	-- 滑块
 	local knob = Instance.new("Frame")
-	knob.Size = UDim2.fromOffset(18, 18)
+	knob.Size = UDim2.fromOffset(15, 15)
 	knob.Position = UDim2.fromScale((defV - minV) / (maxV - minV), 0.5)
 	knob.AnchorPoint = Vector2.new(0.5, 0.5)
 	knob.BackgroundColor3 = Color3.new(1, 1, 1)
 	knob.BorderSizePixel = 0
 	knob.Parent = track
-	local kc = makeCorner(9)
+	local kc = makeCorner(8)
 	kc.Parent = knob
-	track:AddTag("UI框架_滑条滑块")
-
 	local dragging = false
 	local function setValue(v)
 		v = math.clamp(v, minV, maxV)
@@ -217,18 +299,12 @@ local function addSlider(parent, offsetY, label, minV, maxV, defV, suffix, onCha
 		if onChanged then onChanged(v) end
 	end
 	knob.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = true
-		end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = true end
 	end)
 	knob.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			dragging = false
-		end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
 	end)
-	-- 拖动更新
-	local uis = game:GetService("UserInputService")
-	uis.InputChanged:Connect(function(input)
+	UIS.InputChanged:Connect(function(input)
 		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
 			local absPos = track.AbsolutePosition
 			local absSize = track.AbsoluteSize
@@ -237,151 +313,130 @@ local function addSlider(parent, offsetY, label, minV, maxV, defV, suffix, onCha
 		end
 	end)
 	row:AddTag("UI框架_控件")
-	return { setValue = setValue, track = track }
+	return { setValue = setValue }
 end
 
 -- 开关
 local function addToggle(parent, offsetY, label, defOn, onChanged)
 	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, -32, 0, 34)
-	row.Position = UDim2.fromOffset(16, offsetY)
+	row.Size = UDim2.new(1, -24, 0, 30)
+	row.Position = UDim2.fromOffset(12, offsetY)
 	row.BackgroundTransparency = 1
 	row.Parent = parent
 	row:AddTag("UI框架_开关行")
-
-	local lbl = makeText(label, 12, Colors.text)
+	local lbl = makeText(label, 11, Colors.text)
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.Size = UDim2.fromOffset(150, 34)
+	lbl.Size = UDim2.fromOffset(120, 30)
 	lbl.Parent = row
-
 	local isOn = defOn
-	-- 轨道
 	local track = Instance.new("Frame")
-	track.Position = UDim2.new(1, -62, 0, 4)
-	track.Size = UDim2.fromOffset(46, 26)
-	track.AnchorPoint = Vector2.new(0, 0)
+	track.Position = UDim2.new(1, -50, 0, 3)
+	track.Size = UDim2.fromOffset(38, 24)
 	track.BackgroundColor3 = isOn and Colors.on or Colors.off
 	track.BorderSizePixel = 0
-	track.Parent = row
-	local tc = makeCorner(13)
-	tc.Parent = track
-	-- 滑块
-	local knob = Instance.new("Frame")
-	knob.Size = UDim2.fromOffset(20, 20)
-	knob.Position = UDim2.fromOffset(isOn and 24 or 3, 3)
-	knob.BackgroundColor3 = Color3.new(1, 1, 1)
-	knob.BorderSizePixel = 0
-	knob.Parent = track
-	local kc = makeCorner(10)
-	kc.Parent = knob
-
-	local function setOn(v)
-		isOn = v
-		track.BackgroundColor3 = v and Colors.on or Colors.off
-		knob.Position = UDim2.fromOffset(v and 24 or 3, 3)
-		if onChanged then onChanged(v) end
-	end
-
-	track.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			setOn(not isOn)
-		end
-	end)
-	row:AddTag("UI框架_控件")
-	return { setOn = setOn }
-end
-
--- ========== 中央 FOV 空心圆圈（居中，可调大小/颜色） ==========
-local fovSize = 180
-local fovColor = Color3.new(1, 1, 1)
-local Fov = Instance.new("Frame")
-Fov.Name = "FOV圈"
-Fov.Size = UDim2.fromOffset(fovSize, fovSize)
-Fov.Position = UDim2.fromScale(0.5, 0.5)
-Fov.AnchorPoint = Vector2.new(0.5, 0.5)
-Fov.BackgroundTransparency = 1
-Fov.BorderSizePixel = 0
-Fov.ZIndex = 10
-Fov.Parent = ScreenGui
-Fov:AddTag("UI框架_FOV圈")
--- 空心圆环：用边框
-local ring = Instance.new("Frame")
-ring.Size = UDim2.fromScale(1, 1)
-ring.BackgroundTransparency = 1
-ring.BorderSizePixel = 3
-ring.BorderColor3 = fovColor
-ring.Parent = Fov
-local rc = makeCorner(1000)
-rc.Parent = ring
-Fov:AddTag("UI框架_圆环")
--- 中心点
-local dot = Instance.new("Frame")
-dot.Size = UDim2.fromOffset(4, 4)
-dot.Position = UDim2.fromScale(0.5, 0.5)
-dot.AnchorPoint = Vector2.new(0.5, 0.5)
-dot.BackgroundColor3 = fovColor
-dot.BorderSizePixel = 0
-dot.Parent = Fov
-local dc = makeCorner(2)
-dc.Parent = dot
-
--- ========== 构建页面 ==========
--- 页面1：自瞄
-do
-	local page = makePage()
-	pages.aim = page
-	local sec1 = addSection(page, "全局", 12, 128)
-	addToggle(sec1, 40, "自瞄开关", true, function(v) end)
-	addToggle(sec1, 82, "队伍识别", true, function(v) print("队伍识别:", v) end)
-	addToggle(sec1, 124, "掩体识别", true, function(v) print("掩体识别:", v) end)
-	local sec2 = addSection(page, "瞄准参数", 152, 200)
-	addSlider(sec2, 40, "自瞄平滑度", 0, 100, 50, "%", function(v) print("平滑度:", v) end)
-	addSlider(sec2, 82, "FOV 范围", 60, 400, 180, "px", function(v)
-		fovSize = v
-		Fov.Size = UDim2.fromOffset(v, v)
-	end)
-	addSlider(sec2, 124, "锁定范围", 50, 1000, 300, "", function(v) end)
-	addSlider(sec2, 166, "命中高度", 0, 100, 55, "%", function(v) end)
-end
-
--- 页面2：透视
-do
+ 	track.Parent = row
+ 	local tc = makeCorner(12)
+ 	tc.Parent = track
+ 	local knob = Instance.new("Frame")
+ 	knob.Size = UDim2.fromOffset(18, 18)
+ 	knob.Position = UDim2.fromOffset(isOn and 18 or 3, 3)
+ 	knob.BackgroundColor3 = Color3.new(1, 1, 1)
+ 	knob.BorderSizePixel = 0
+ 	knob.Parent = track
+ 	local kc = makeCorner(9)
+ 	kc.Parent = knob
+ 	local function setOn(v)
+ 		isOn = v
+ 		track.BackgroundColor3 = v and Colors.on or Colors.off
+ 		knob.Position = UDim2.fromOffset(v and 18 or 3, 3)
+ 		if onChanged then onChanged(v) end
+ 	end
+ 	track.InputBegan:Connect(function(input)
+ 		if input.UserInputType == Enum.UserInputType.MouseButton1 then setOn(not isOn) end
+ 	end)
+ 	row:AddTag("UI框架_控件")
+ 	return { setOn = setOn }
+ end
+ -- ============ 中央 FOV 空心圆圈 ============
+ local Fov = Instance.new("Frame")
+ Fov.Name = "FOV圈"
+ Fov.Size = UDim2.fromOffset(140, 140)
+ Fov.Position = UDim2.fromScale(0.5, 0.5)
+ Fov.AnchorPoint = Vector2.new(0.5, 0.5)
+ Fov.BackgroundTransparency = 1
+ Fov.BorderSizePixel = 0
+ Fov.ZIndex = 1
+ Fov.Parent = ScreenGui
+ Fov:AddTag("UI框架_FOV圈")
+ local ring = Instance.new("Frame")
+ ring.Size = UDim2.fromScale(1, 1)
+ ring.BackgroundTransparency = 1
+ ring.BorderSizePixel = 2
+ ring.BorderColor3 = Color3.new(1, 1, 1)
+ ring.Parent = Fov
+ local rc = makeCorner(1000)
+ rc.Parent = ring
+ local dot = Instance.new("Frame")
+ dot.Size = UDim2.fromOffset(3, 3)
+ dot.Position = UDim2.fromScale(0.5, 0.5)
+ dot.AnchorPoint = Vector2.new(0.5, 0.5)
+ dot.BackgroundColor3 = Color3.new(1, 1, 1)
+ dot.BorderSizePixel = 0
+ dot.Parent = Fov
+ local dc = makeCorner(2)
+ dc.Parent = dot
+ -- ============ 构建页面 ============
+ do
+ 	local page = makePage()
+ 	pages.aim = page
+ 	local sec1 = addSection(page, "全局", 8, 108)
+ 	addToggle(sec1, 32, "自瞄开关", true, function(v) end)
+ 	addToggle(sec1, 70, "队伍识别", true, function(v) print("队伍识别:", v) end)
+ 	addToggle(sec1, 108, "掩体识别", true, function(v) print("掩体识别:", v) end)
+ 	local sec2 = addSection(page, "瞄准参数", 126, 160)
+ 	addSlider(sec2, 34, "平滑度", 0, 100, 50, "%", function(v) print("平滑度:", v) end)
+ 	addSlider(sec2, 70, "FOV范围", 40, 300, 140, "px", function(v) Fov.Size = UDim2.fromOffset(v, v) end)
+ 	addSlider(sec2, 106, "锁定范围", 50, 1000, 300, "", function(v) end)
+ 	addSlider(sec2, 142, "命中高度", 0, 100, 55, "%", function(v) end)
+ end
+ do
  	local page = makePage()
  	pages.esp = page
- 	local sec1 = addSection(page, "全局", 12, 82)
- 	addToggle(sec1, 40, "透视开关", true, function(v) end)
- 	addToggle(sec1, 82, "识别队伍", true, function(v) print("透视识别队伍:", v) end)
- 	local sec2 = addSection(page, "外观参数", 106, 168)
- 	addToggle(sec2, 40, "方框", true, function(v) end)
- 	addToggle(sec2, 82, "射线", false, function(v) end)
- 	addSlider(sec2, 124, "框大小", 1, 3, 1.5, "x", function(v) end)
- 	addSlider(sec2, 166, "显示范围", 100, 1000, 500, "", function(v) end)
+ 	local sec1 = addSection(page, "全局", 8, 70)
+ 	addToggle(sec1, 32, "透视开关", true, function(v) end)
+ 	addToggle(sec1, 70, "识别队伍", true, function(v) print("透视识别队伍:", v) end)
+ 	local sec2 = addSection(page, "外观参数", 88, 140)
+ 	addToggle(sec2, 32, "方框", true, function(v) end)
+ 	addToggle(sec2, 70, "射线", false, function(v) end)
+ 	addSlider(sec2, 106, "框大小", 1, 3, 1.5, "x", function(v) end)
+ 	addSlider(sec2, 142, "显示范围", 100, 1000, 500, "", function(v) end)
  end
- -- 页面3：视觉设置
  do
  	local page = makePage()
  	pages.visual = page
- 	local sec1 = addSection(page, "FOV 范围圈", 12, 128)
- 	addSlider(sec1, 40, "范围大小", 60, 400, 180, "px", function(v)
- 		fovSize = v
- 		Fov.Size = UDim2.fromOffset(v, v)
- 	end)
- 	addSlider(sec1, 82, "不透明度", 10, 100, 85, "%", function(v)
- 		ring.BorderTransparency = 1 - v / 100
- 	end)
- 	addSlider(sec1, 124, "颜色", 0, 0, 0, "", function() end)
- 	-- 颜色通过几个预设按钮
- 	local sec2 = addSection(page, "界面", 152, 82)
- 	addToggle(sec2, 40, "范围居中", true, function(v)
- 		Fov.Position = UDim2.fromScale(v and 0.5 or 0.5, v and 0.5 or 0.5)
- 	end)
+ 	local sec1 = addSection(page, "FOV 范围圈", 8, 130)
+ 	addSlider(sec1, 34, "范围大小", 40, 300, 140, "px", function(v) Fov.Size = UDim2.fromOffset(v, v) end)
+ 	addSlider(sec1, 70, "不透明度", 10, 100, 85, "%", function(v) ring.BorderTransparency = 1 - v / 100 end)
+ 	local sec2 = addSection(page, "界面", 148, 40)
+ 	local closeBtn = Instance.new("TextButton")
+ 	closeBtn.Size = UDim2.new(1, -28, 0, 30)
+ 	closeBtn.Position = UDim2.fromOffset(14, 8)
+ 	closeBtn.BackgroundColor3 = Colors.accent
+ 	closeBtn.BorderSizePixel = 0
+ 	closeBtn.Text = "关闭界面"
+ 	closeBtn.TextColor3 = Color3.new(1, 1, 1)
+ 	closeBtn.TextSize = 12
+ 	closeBtn.Font = Enum.Font.GothamBold
+ 	closeBtn.AutoButtonColor = false
+ 	closeBtn.Parent = page
+ 	local cb = makeCorner(8)
+ 	cb.Parent = closeBtn
+ 	closeBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
  end
- -- ========== 导航切换 ==========
+ -- ============ 导航切换 ============
  local function setPage(id)
  	if currentPage == id then return end
- 	for k, p in pairs(pages) do
- 		p.Visible = (k == id)
- 	end
+ 	for k, p in pairs(pages) do p.Visible = (k == id) end
  	currentPage = id
  	for k, b in pairs(pageBtns) do
  		b.active = (k == id)
@@ -389,41 +444,20 @@ do
  		b.txt.TextColor3 = b.active and Color3.new(1, 1, 1) or Colors.text
  	end
  end
- -- 创建导航按钮
- local y = 0
+ local y = 4
  for _, cfg in ipairs({
  	{ id = "aim", label = "自瞄" },
  	{ id = "esp", label = "透视" },
  	{ id = "visual", label = "视觉设置" },
  }) do
  	local b = makeNavButton(cfg.id, cfg.label)
- 	b.btn.Position = UDim2.fromOffset(10, y)
- 	b.btn.Size = UDim2.new(1, -20, 0, 46)
+ 	b.btn.Position = UDim2.fromOffset(7, y)
+ 	b.btn.Size = UDim2.new(1, -14, 0, 40)
  	b.btn.Parent = NavList
- 	b.bg.Visible = false
  	b.btn.InputBegan:Connect(function(input)
- 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
- 			setPage(cfg.id)
- 		end
+ 		if input.UserInputType == Enum.UserInputType.MouseButton1 then setPage(cfg.id) end
  	end)
  	pageBtns[cfg.id] = b
- 	y = y + 54
+ 	y = y + 48
  end
- -- 初始页面
  setPage("aim")
- -- 底部提示
- local notice = Instance.new("TextLabel")
- notice.Text = "仅界面框架演示 · 未包含任何自瞄 / 透视作弊功能"
- notice.TextSize = 12
- notice.TextColor3 = Color3.new(1, 1, 1)
- notice.Font = Enum.Font.GothamMedium
- notice.BackgroundColor3 = Color3.fromRGB(58, 90, 140)
- notice.BackgroundTransparency = 0.08
- notice.Size = UDim2.fromOffset(360, 34)
- notice.Position = UDim2.fromScale(0.5, 1)
- notice.AnchorPoint = Vector2.new(0.5, 1)
- notice.Position = notice.Position - UDim2.fromOffset(0, 12)
- notice.ZIndex = 20
- notice.Parent = ScreenGui
- local nc = makeCorner(17)
- nc.Parent = notice
