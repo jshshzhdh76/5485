@@ -1,0 +1,326 @@
+-- 仅用于你自己的 Roblox 游戏/训练场
+-- 本地客户端工具：不自动开火、不伪造远程事件、不发送 ShootEvent
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local config = {
+	aimEnabled = false,
+	aimSmoothness = 0.25,
+	aimRange = 250,
+	teamCheck = true,
+	wallCheck = true,
+
+	fovRadius = 150,
+	fovColor = Color3.fromRGB(255, 255, 255),
+
+	espEnabled = false,
+	espTeamCheck = true,
+}
+
+-- ================= FOV 空心圆 =================
+local fovGui = Instance.new("ScreenGui")
+fovGui.Name = "AssistFovGui"
+fovGui.ResetOnSpawn = false
+fovGui.IgnoreGuiInset = true
+fovGui.DisplayOrder = 10
+fovGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local fovCircle = Instance.new("Frame")
+fovCircle.Name = "FovCircle"
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.Position = UDim2.fromScale(0.5, 0.5) -- 正中心，不偏下
+fovCircle.Size = UDim2.fromOffset(config.fovRadius * 2, config.fovRadius * 2)
+fovCircle.BackgroundTransparency = 1
+fovCircle.Parent = fovGui
+
+local fovCorner = Instance.new("UICorner")
+fovCorner.CornerRadius = UDim.new(1, 0)
+fovCorner.Parent = fovCircle
+
+local fovStroke = Instance.new("UIStroke")
+fovStroke.Thickness = 2
+fovStroke.Color = config.fovColor
+fovStroke.Transparency = 0
+fovStroke.Parent = fovCircle
+
+local function updateFov()
+	fovCircle.Size = UDim2.fromOffset(config.fovRadius * 2, config.fovRadius * 2)
+	fovStroke.Color = config.fovColor
+end
+updateFov()
+
+-- ================= 主窗口 =================
+local gui = Instance.new("ScreenGui")
+gui.Name = "AssistMainGui"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 5
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local window = Instance.new("Frame")
+window.Name = "Window"
+window.AnchorPoint = Vector2.new(0.5, 0.5)
+window.Position = UDim2.fromScale(0.5, 0.5)
+window.Size = UDim2.fromOffset(560, 340)
+window.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
+window.BorderSizePixel = 0
+window.ClipsDescendants = true
+window.Active = true
+window.Parent = gui
+
+local windowCorner = Instance.new("UICorner")
+windowCorner.CornerRadius = UDim.new(0, 10)
+windowCorner.Parent = window
+
+local titleBar = Instance.new("Frame")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 36)
+titleBar.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = window
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 10)
+titleCorner.Parent = titleBar
+
+local title = Instance.new("TextLabel")
+title.Text = "训练辅助（仅本地 / 不自动开火）"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.TextColor3 = Color3.fromRGB(240, 240, 240)
+title.BackgroundTransparency = 1
+title.Position = UDim2.fromOffset(12, 0)
+title.Size = UDim2.new(1, -52, 1, 0)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = titleBar
+
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Text = "—"
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.TextSize = 18
+minimizeBtn.TextColor3 = Color3.fromRGB(240, 240, 240)
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+minimizeBtn.Size = UDim2.fromOffset(32, 24)
+minimizeBtn.AnchorPoint = Vector2.new(1, 0.5)
+minimizeBtn.Position = UDim2.new(1, -8, 0.5, 0)
+minimizeBtn.Parent = titleBar
+
+local minCorner = Instance.new("UICorner")
+minCorner.CornerRadius = UDim.new(0, 6)
+minCorner.Parent = minimizeBtn
+
+-- 左侧分类
+local leftPanel = Instance.new("Frame")
+leftPanel.Name = "LeftPanel"
+leftPanel.Position = UDim2.fromOffset(8, 44)
+leftPanel.Size = UDim2.new(0, 130, 1, -52)
+leftPanel.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+leftPanel.BorderSizePixel = 0
+leftPanel.Parent = window
+
+local leftCorner = Instance.new("UICorner")
+leftCorner.CornerRadius = UDim.new(0, 8)
+leftCorner.Parent = leftPanel
+
+local leftLayout = Instance.new("UIListLayout")
+leftLayout.Padding = UDim.new(0, 6)
+leftLayout.SortOrder = Enum.SortOrder.LayoutOrder
+leftLayout.Parent = leftPanel
+
+-- 右侧内容
+local rightPanel = Instance.new("Frame")
+rightPanel.Name = "RightPanel"
+rightPanel.Position = UDim2.fromOffset(146, 44)
+rightPanel.Size = UDim2.new(1, -154, 1, -52)
+rightPanel.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+rightPanel.BorderSizePixel = 0
+rightPanel.Parent = window
+
+local rightCorner = Instance.new("UICorner")
+rightCorner.CornerRadius = UDim.new(0, 8)
+rightCorner.Parent = rightPanel
+
+-- ================= 控件函数 =================
+local function createToggle(parent, text, initial, callback)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, -8, 0, 34)
+	btn.BackgroundColor3 = initial and Color3.fromRGB(70, 130, 90) or Color3.fromRGB(50, 50, 60)
+	btn.Text = text .. ": " .. (initial and "开" or "关")
+	btn.TextColor3 = Color3.fromRGB(240, 240, 240)
+	btn.Font = Enum.Font.Gotham
+	btn.TextSize = 13
+	btn.Parent = parent
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = btn
+
+	local state = initial
+	btn.MouseButton1Click:Connect(function()
+		state = not state
+		btn.BackgroundColor3 = state and Color3.fromRGB(70, 130, 90) or Color3.fromRGB(50, 50, 60)
+		btn.Text = text .. ": " .. (state and "开" or "关")
+		callback(state)
+	end)
+	return btn
+end
+
+local function createSlider(parent, labelText, minVal, maxVal, initial, formatStr, callback)
+	formatStr = formatStr or "%.2f"
+	initial = math.clamp(initial, minVal, maxVal)
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(1, -8, 0, 46)
+	frame.BackgroundTransparency = 1
+	frame.Parent = parent
+
+	local label = Instance.new("TextLabel")
+	label.Text = labelText .. ": " .. string.format(formatStr, initial)
+	label.Font = Enum.Font.Gotham
+	label.TextSize = 13
+	label.TextColor3 = Color3.fromRGB(230, 230, 230)
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.new(1, 0, 0, 20)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = frame
+
+	local bar = Instance.new("Frame")
+	bar.Position = UDim2.fromOffset(0, 28)
+	bar.Size = UDim2.new(1, 0, 0, 8)
+	bar.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+	bar.Parent = frame
+
+	local barCorner = Instance.new("UICorner")
+	barCorner.CornerRadius = UDim.new(1, 0)
+	barCorner.Parent = bar
+
+	local fill = Instance.new("Frame")
+	local initRel = (initial - minVal) / (maxVal - minVal)
+	fill.Size = UDim2.new(initRel, 0, 1, 0)
+	fill.BackgroundColor3 = Color3.fromRGB(80, 160, 255)
+	fill.Parent = bar
+
+	local fillCorner = Instance.new("UICorner")
+	fillCorner.CornerRadius = UDim.new(1, 0)
+	fillCorner.Parent = fill
+
+	local knob = Instance.new("TextButton")
+	knob.Text = ""
+	knob.Size = UDim2.fromOffset(16, 16)
+	knob.AnchorPoint = Vector2.new(0.5, 0.5)
+	knob.Position = UDim2.new(initRel, 0, 0.5, 0)
+	knob.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+	knob.Parent = bar
+
+	local knobCorner = Instance.new("UICorner")
+	knobCorner.CornerRadius = UDim.new(1, 0)
+	knobCorner.Parent = knob
+
+	local dragging = false
+
+	local function setValueFromX(x)
+		local rel = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+		local val = minVal + (maxVal - minVal) * rel
+		fill.Size = UDim2.new(rel, 0, 1, 0)
+		knob.Position = UDim2.new(rel, 0, 0.5, 0)
+		label.Text = labelText .. ": " .. string.format(formatStr, val)
+		callback(val)
+	end
+
+	knob.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+		end
+	end)
+
+	bar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			setValueFromX(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			setValueFromX(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+
+	return frame
+end
+
+-- ================= 页面 =================
+local aimPage = Instance.new("ScrollingFrame")
+aimPage.Name = "AimPage"
+aimPage.Size = UDim2.fromScale(1, 1)
+aimPage.BackgroundTransparency = 1
+aimPage.BorderSizePixel = 0
+aimPage.ScrollBarThickness = 4
+aimPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+aimPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+aimPage.Parent = rightPanel
+
+local aimLayout = Instance.new("UIListLayout")
+aimLayout.Padding = UDim.new(0, 6)
+aimLayout.SortOrder = Enum.SortOrder.LayoutOrder
+aimLayout.Parent = aimPage
+
+local visualPage = Instance.new("ScrollingFrame")
+visualPage.Name = "VisualPage"
+visualPage.Size = UDim2.fromScale(1, 1)
+visualPage.BackgroundTransparency = 1
+visualPage.BorderSizePixel = 0
+visualPage.ScrollBarThickness = 4
+visualPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+visualPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+visualPage.Visible = false
+visualPage.Parent = rightPanel
+
+local visualLayout = Instance.new("UIListLayout")
+visualLayout.Padding = UDim.new(0, 6)
+visualLayout.SortOrder = Enum.SortOrder.LayoutOrder
+visualLayout.Parent = visualPage
+
+-- 分类按钮
+local function createCategoryButton(text, order, callback)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(1, -8, 0, 34)
+	btn.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+	btn.Text = text
+	btn.TextColor3 = Color3.fromRGB(240, 240, 240)
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 13
+	btn.LayoutOrder = order
+	btn.Parent = leftPanel
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = btn
+
+	btn.MouseButton1Click:Connect(callback)
+	return btn
+end
+
+createCategoryButton("自瞄", 1, function()
+	aimPage.Visible = true
+	visualPage.Visible = false
+end)
+
+createCategoryButton("视觉", 2, function()
+	aimPage.Visible = false
+	visualPage.Visible = true
+end)
+
+-- ================= 自瞄页 =================
+createToggle(aimPage, "启用自瞄辅助（按住右键）", config.aimEnable
